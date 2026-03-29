@@ -5,7 +5,9 @@ const { Server } = require('socket.io');
 const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server, {
-  cors: { origin: '*', methods: ['GET','POST'] }
+  cors: { origin: '*', methods: ['GET','POST'] },
+  pingTimeout: 60000,
+  pingInterval: 25000
 });
 
 const PORT = process.env.PORT || 3000;
@@ -163,7 +165,9 @@ function applyBlind(cardId, state) {
   if (canPlay(card,s.pile,s.mustLower)) return applyCards([card],s);
   p.tabDown.splice(idx,1);
   const n=s.pile.length;
-  p.hand.push(card,...s.pile); s.pile=[]; p.phase='hand';
+  p.hand.push(card,...s.pile); s.pile=[];
+  // Force hand phase even if tabDown now empty - card failed so player gets stack
+  p.phase='hand'; p.finished=false; p.rank=null;
   s.mustLower=false; s.skip=false; s.players[pi]=p;
   s.log=`${p.name} – ${card.value}${card.suit} passt nicht! Stapel auf die Hand`;
   const ni=nextIdx(s.players,pi);
@@ -193,7 +197,8 @@ function stateForPlayer(state, playerIdx) {
 
 // ─── Generate room code ──────────────────────────────────────────────────────
 function genCode() {
-  return Math.random().toString(36).substring(2,7).toUpperCase();
+  const c='BCDFGHJKLMNPQRSTVWXYZ';
+  return Array.from({length:5},()=>c[Math.floor(Math.random()*c.length)]).join('');
 }
 
 // ─── Socket.io ───────────────────────────────────────────────────────────────
@@ -327,10 +332,11 @@ io.on('connection', socket => {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function lobbyView(room) {
   return {
-    code:     room.code,
-    settings: room.settings,
-    players:  room.players.map((p,i)=>({ name:p.name, emoji:p.emoji, isHost:i===0 })),
-    phase:    room.phase,
+    code:       room.code,
+    settings:   room.settings,
+    players:    room.players.map((p,i)=>({ name:p.name, emoji:p.emoji, isHost:i===0 })),
+    takenEmojis:room.players.map(p=>p.emoji),
+    phase:      room.phase,
   };
 }
 
