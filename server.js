@@ -242,6 +242,23 @@ io.on('connection', socket => {
     io.to(code).emit('lobby_update', lobbyView(room));
   });
 
+  // ── PEEK ROOM (get taken emojis before joining) ───────────────────────────
+  socket.on('peek_room', ({code}, cb) => {
+    const room = rooms[code];
+    if (!room || room.phase !== 'lobby') return cb && cb({});
+    cb && cb({ takenEmojis: room.players.map(p => p.emoji) });
+  });
+
+  // ── SET EMOJI (after joining) ─────────────────────────────────────────────────
+  socket.on('set_emoji', ({emoji}) => {
+    const room = rooms[socket.data.roomCode];
+    if (!room) return;
+    const pi = socket.data.playerIdx;
+    if (room.players[pi]) room.players[pi].emoji = emoji;
+    socket.emit('emoji_confirmed', {emoji});
+    io.to(room.code).emit('lobby_update', lobbyView(room));
+  });
+
   // ── UPDATE SETTINGS (host only) ────────────────────────────────────────────
   socket.on('update_settings', (settings) => {
     const room = rooms[socket.data.roomCode];
