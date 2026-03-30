@@ -430,6 +430,19 @@ function broadcastGameState(room) {
 }
 
 // ─── Health check ─────────────────────────────────────────────────────────────
-app.get('/', (req,res) => res.send('Shithead server running 💩'));
+app.get('/', (req,res) => res.send('Shithead server running'));
+
+// ─── Self-ping to prevent Render sleep ─────────────────────────────────────────
+const SELF_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+setInterval(() => {
+  const https = require('https');
+  const http  = require('http');
+  const lib   = SELF_URL.startsWith('https') ? https : http;
+  lib.get(SELF_URL, (res) => {
+    console.log('Self-ping:', res.statusCode);
+  }).on('error', (e) => {
+    console.log('Self-ping failed:', e.message);
+  });
+}, 10 * 60 * 1000); // every 10 minutes
 
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
