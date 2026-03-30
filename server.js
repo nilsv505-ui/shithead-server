@@ -6,8 +6,10 @@ const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server, {
   cors: { origin: '*', methods: ['GET','POST'] },
-  pingTimeout: 60000,
-  pingInterval: 25000
+  pingTimeout: 120000,
+  pingInterval: 30000,
+  connectTimeout: 60000,
+  transports: ['websocket', 'polling']
 });
 
 const PORT = process.env.PORT || 3000;
@@ -272,6 +274,27 @@ io.on('connection', socket => {
     io.to(room.code).emit('lobby_update', lobbyView(room));
   });
 
+  // ── RECONNECT ─────────────────────────────────────────────────────────────────
+  socket.on('reconnect_player', ({code, playerIdx}) => {
+    const room = rooms[code];
+    if (!room || playerIdx >= room.players.length) return;
+    const p = room.players[playerIdx];
+    // Cancel disconnect timer
+    if (socket.data.disconnectTimer) clearTimeout(socket.data.disconnectTimer);
+    // Update socket ID
+    p.socketId = socket.id;
+    p.disconnected = false;
+    socket.data.roomCode = code;
+    socket.data.playerIdx = playerIdx;
+    socket.join(code);
+    socket.emit('lobby_update', lobbyView(room));
+    if (room.phase==='game' && room.state) {
+      const view = stateForPlayer(room.state, playerIdx);
+      socket.emit('game_state', view);
+    }
+    console.log('Player reconnected:', p.name);
+  });
+
   // ── UPDATE SETTINGS (host only) ────────────────────────────────────────────
   socket.on('update_settings', (settings) => {
     const room = rooms[socket.data.roomCode];
@@ -358,21 +381,31 @@ io.on('connection', socket => {
   });
 
   // ── DISCONNECT ─────────────────────────────────────────────────────────────
-  socket.on('disconnect', () => {
-    console.log('disconnected:', socket.id);
+  socket.on('disconnect', (reason) => {
+    console.log('disconnected:', socket.id, reason);
     const code = socket.data.roomCode;
     if (!code||!rooms[code]) return;
     const room = rooms[code];
-    room.players = room.players.filter(p=>p.socketId!==socket.id);
-    if (room.players.length===0) {
-      delete rooms[code];
-    } else {
-      if (room.host===socket.id) room.host=room.players[0].socketId;
-      io.to(code).emit('lobby_update', lobbyView(room));
-      if (room.phase==='game') {
-        io.to(code).emit('player_left', { name: 'Ein Spieler' });
+    // Mark as disconnected but give 30s to reconnect
+    const pi = socket.data.playerIdx;
+    if (room.players[pi]) room.players[pi].disconnected = true;
+    const disconnectTimer = setTimeout(() => {
+      if (!rooms[code]) return;
+      // Still disconnected after 30s - actually remove
+      room.players = room.players.filter(p=>p.socketId!==socket.id);
+      if (room.players.length===0) {
+        delete rooms[code];
+      } else {
+        if (room.host===socket.id) room.host=room.players[0].socketId;
+        io.to(code).emit('lobby_update', lobbyView(room));
+        if (room.phase==='game') {
+          const name = room.players[pi]?.name || 'Ein Spieler';
+          io.to(code).emit('player_left', { name });
+        }
       }
-    }
+    }, 30000);
+    // Store timer so we can cancel on reconnect
+    socket.data.disconnectTimer = disconnectTimer;
   });
 });
 
