@@ -249,6 +249,15 @@ io.on('connection', socket => {
     cb && cb({ takenEmojis: room.players.map(p => p.emoji) });
   });
 
+  // ── REACTION ───────────────────────────────────────────────────────────────────
+  socket.on('reaction', ({emoji}) => {
+    const room = rooms[socket.data.roomCode];
+    if (!room) return;
+    const pi = socket.data.playerIdx;
+    const name = room.players[pi]?.name || '';
+    io.to(room.code).emit('reaction', {emoji, name});
+  });
+
   // ── SET EMOJI (after joining) ─────────────────────────────────────────────────
   socket.on('set_emoji', ({emoji}) => {
     const room = rooms[socket.data.roomCode];
@@ -325,6 +334,15 @@ io.on('connection', socket => {
     room.phase = 'lobby';
     room.state = null;
     io.to(room.code).emit('lobby_update', lobbyView(room));
+  });
+
+  // ── REACTION ──────────────────────────────────────────────────────────────────
+  socket.on('reaction', ({emoji}) => {
+    const room = rooms[socket.data.roomCode];
+    if (!room||room.phase!=='game') return;
+    const pi = socket.data.playerIdx;
+    const name = room.players[pi]?.name||'?';
+    io.to(room.code).emit('reaction', {emoji, name});
   });
 
   // ── DISCONNECT ─────────────────────────────────────────────────────────────
