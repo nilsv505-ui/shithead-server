@@ -17,7 +17,7 @@ const rooms = {}; // roomCode → Room
 
 // ─── Game Logic (same rules as frontend) ────────────────────────────────────
 const VALUE_ORDER = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
-const ALWAYS_PLAY = new Set(['2','3','10','J']);
+const ALWAYS_PLAY = new Set(['2','3','10']);
 
 const nv  = v => VALUE_ORDER.indexOf(v);
 const uid = (() => { let i=0; return ()=>++i; })();
@@ -41,6 +41,9 @@ function canPlay(card, pile, mustLower) {
   if (ALWAYS_PLAY.has(card.value)) return true;
   const top = effTop(pile);
   if (!top) return true;
+  // Jack cannot be played on a 7 at all
+  if (card.value==='J' && top==='7') return false;
+  // Jack follows normal ordering (must be >= top, or < top when mustLower)
   return mustLower ? nv(card.value)<nv(top) : nv(card.value)>=nv(top);
 }
 function topCount(pile) {
@@ -90,8 +93,9 @@ function initGame(playerInfos, doubleDeck=false) {
     finished: false,
     rank:     null,
   }));
+  const startIdx = Math.floor(Math.random()*players.length);
   return { players, deck, pile:[], removed:[], mustLower:false, skip:false,
-           currentIdx:0, log:`${playerInfos[0].name} beginnt!`,
+           currentIdx:startIdx, log:`${players[startIdx].name} beginnt!`,
            status:'playing', winner:null, tick:0 };
 }
 
@@ -331,6 +335,14 @@ io.on('connection', socket => {
   socket.on('play_again', () => {
     const room = rooms[socket.data.roomCode];
     if (!room||room.host!==socket.id) return;
+    // Track win stats before resetting
+    if (room.state && room.state.status==='won') {
+      const winner = room.state.players.find(p=>p.rank===1);
+      if (winner) {
+        const p = room.players.find(p=>p.name===winner.name);
+        if (p) { p.wins = (p.wins||0)+1; }
+      }
+    }
     room.phase = 'lobby';
     room.state = null;
     io.to(room.code).emit('lobby_update', lobbyView(room));
@@ -369,7 +381,7 @@ function lobbyView(room) {
   return {
     code:       room.code,
     settings:   room.settings,
-    players:    room.players.map((p,i)=>({ name:p.name, emoji:p.emoji, isHost:i===0 })),
+    players:    room.players.map((p,i)=>({ name:p.name, emoji:p.emoji, isHost:i===0, wins:p.wins||0 })),
     takenEmojis:room.players.map(p=>p.emoji),
     phase:      room.phase,
   };
