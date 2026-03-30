@@ -287,11 +287,13 @@ io.on('connection', socket => {
     socket.data.roomCode = code;
     socket.data.playerIdx = playerIdx;
     socket.join(code);
-    socket.emit('lobby_update', lobbyView(room));
+    socket.emit('reconnect_ok', {name:p.name, emoji:p.emoji, roomCode:code, playerIdx});
     if (room.phase==='game' && room.state) {
-      const view = stateForPlayer(room.state, playerIdx);
-      socket.emit('game_state', view);
+      socket.emit('game_state', stateForPlayer(room.state, playerIdx));
+    } else {
+      socket.emit('lobby_update', lobbyView(room));
     }
+    io.to(code).emit('lobby_update', lobbyView(room));
     console.log('Player reconnected:', p.name);
   });
 
