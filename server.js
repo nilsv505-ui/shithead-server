@@ -9,7 +9,7 @@ const io     = new Server(server, {
   pingTimeout: 120000,
   pingInterval: 30000,
   connectTimeout: 60000,
-  transports: ['websocket', 'polling']
+  transports: ['polling', 'websocket']
 });
 
 const PORT = process.env.PORT || 3000;
@@ -43,8 +43,8 @@ function canPlay(card, pile, mustLower) {
   if (ALWAYS_PLAY.has(card.value)) return true;
   const top = effTop(pile);
   if (!top) return true;
-  // Jack cannot be played on a 7 at all
-  if (card.value==='J' && top==='7') return false;
+  // Jack cannot be played directly on a 7 (but CAN if 3/mirror is on top)
+  if (card.value==='J' && pile.length>0 && pile[pile.length-1].value==='7') return false;
   // Jack follows normal ordering (must be >= top, or < top when mustLower)
   return mustLower ? nv(card.value)<nv(top) : nv(card.value)>=nv(top);
 }
@@ -313,6 +313,8 @@ io.on('connection', socket => {
 
     room.phase = 'game';
     room.state = initGame(room.players, room.settings.doubleDeck);
+    console.log('Game started, startIdx:', room.state.currentIdx, 
+      'players:', room.players.map(p=>p.name));
     broadcastGameState(room);
   });
 
